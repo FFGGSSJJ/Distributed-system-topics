@@ -4,6 +4,7 @@ extern "C" {
 #include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 }
 
 #include <thread>
@@ -12,6 +13,7 @@ extern "C" {
 #include <string>
 #include <chrono>
 #include <vector>
+#include "resolvehost.hpp"
 
 const char delimiter = ' ';
 
@@ -20,7 +22,7 @@ int main(int argc, char* argv[])
 {
     /* check cmd args */
 	if (argc < 4) {
-		std::cout << "Usage: ./node <node name> <ip addr> <port #>" << std::endl;
+		std::cout << "Usage: ./node <node name> <ip addr/host name> <port #>" << std::endl;
 		return EXIT_FAILURE;
 	}
 
@@ -28,6 +30,11 @@ int main(int argc, char* argv[])
     std::string node_name = argv[1];
 	std::string ip = argv[2];
 	int port = std::stoi(argv[3]);
+
+    /* if host name provided, resolve to ip addr */
+    std::vector<std::string> ipVec = resolveHostName(ip);
+    if (ipVec.size() > 0)
+        ip = ipVec[0];
 
 	/* set up connection context */
 	struct sockaddr_in server_addr;

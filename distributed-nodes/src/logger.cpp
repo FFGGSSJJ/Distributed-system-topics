@@ -12,6 +12,7 @@ extern "C" {
 #include <iostream>
 #include <chrono>
 #include <mutex>
+#include "resolvehost.hpp"
 
 /* mutex to guarantee thread safety */
 std::mutex logger_mutex;
@@ -19,8 +20,8 @@ std::mutex performance_mutex;
 
 const int recv_size = 4096;
 const char delimiter = ' ';
-std::ofstream logger("logger.txt", std::ios::out | std::ios::trunc);
-std::ofstream performance("performance.txt", std::ios::out | std::ios::trunc);
+std::ofstream logger("logs/logger.txt", std::ios::out | std::ios::trunc);
+std::ofstream performance("logs/performance.txt", std::ios::out | std::ios::trunc);
 
 /* receive data */
 void recv_data(int sockfd){
@@ -96,15 +97,21 @@ int main(int argc, char* argv[])
 {
     /* check args */
 	if (argc < 2) {
-		std::cout << "Usage: ./logger <port #>" << std::endl;
+		std::cout << "Usage: ./logger <ip> <port #>" << std::endl;
 		return EXIT_FAILURE;
 	}
 
     /* read args */
-	int port = std::stoi(argv[1]);
+	int port = std::stoi(argv[2]);
+	std::string ip = argv[1];
+
+    /* if host name provided */
+    std::vector<std::string> ipVec = resolveHostName(ip);
+    if (ipVec.size() > 0) {
+        ip = ipVec[0];
+    }
     
 	/* setup connection context */
-	std::string ip = "127.0.0.1";
 	struct sockaddr_in server_addr, new_addr;
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = port;
