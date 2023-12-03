@@ -1,11 +1,3 @@
-extern "C" {
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <arpa/inet.h>
-}
-
 #include <thread>
 #include <iostream>
 #include <fstream>
@@ -96,7 +88,11 @@ void pack_msg2send(std::string& msg2send, std::string msg, int8_t msgtype, uint8
 }
 
 
-/* update deliver queue and sort */
+
+/**
+ * @brief update deliver queue and sort
+ * @details update the seq number of msg with msg_id
+*/
 void update_deliver_queue(uint16_t msg_id, uint16_t final_seq_num, int node_id) 
 {
     /* change priority in queue and sort */
@@ -364,7 +360,9 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
         delq_mutex.unlock();
 
         // cast msg to all nodes
+        int majority_cnt = 0;
         uint16_t final_seq = proposed_seq;
+        // unq_ids is used to keep track of the msg_id of each node, as it may differ by nodes
         std::map<std::string, uint16_t> unq_ids;
         for (auto i = nodes.cbegin(); i != nodes.cend(); i++) {
             int ret = 0;
@@ -376,16 +374,29 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
             std::cout <<"[INFO]: Multicast Send Messages" << std::endl;
 
             // wait for reply
-            ret = 0;
-            while (ret == 0)
-                ret = recv(i->second, buffer, (size_t)recv_size, 0);
+            ret = recv(i->second, buffer, (size_t)recv_size, 0);
+            
+            // if the node fails, continue to the next node
+            if (ret <= 0) {
+                std::cout <<"[INFO]: Node " << i->first << " Fails" << std::endl;
+                continue;
+            }
+
             std::cout <<"[INFO]: Multicast Get Proposed Seq#" << std::endl;
             
             // update final seq num
             if (buffer[0] == PROPS_SEQ_NUM) {
+                majority_cnt++;
                 unq_ids[i->first] = (uint16_t)buffer[3];
                 final_seq = final_seq <= (uint16_t)buffer[2] ? (uint16_t)buffer[2] : final_seq;
             }
+        }
+
+        // if majority not reached, skip this msg
+        // not necessary to update deliver_queue as the msg is marked as undeliverable
+        if (majority_cnt < node_num/2+1) {
+            std::cout <<"[INFO]: Majority Not Reached, MSG " << std::endl;
+            continue;
         }
 
         // update seq num
