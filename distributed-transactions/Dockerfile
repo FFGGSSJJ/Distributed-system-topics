@@ -5,7 +5,9 @@ USER root
 
 COPY ./ /
 
-RUN apt -y update && \
+RUN chmod 755 /node.bash
+RUN mkdir -p /logs && \ 
+    apt -y update && \
     apt -y install make g++ python3
 
 ENTRYPOINT [ "/node.bash" ]

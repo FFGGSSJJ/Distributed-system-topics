@@ -1,0 +1,32 @@
+version: '1.0'
+
+services:
+  node1:
+    container_name: node1
+    image: node-img
+    environment:
+      - NODE_ID=1
+      - NODE_PORT=8080
+      - NODE_CONFIG_PATH=/config/config1.txt
+    volumes:
+      - ./logs:/logs
+  
+  node2:
+    container_name: node2
+    image: node-img
+    environment:
+      - NODE_ID=2
+      - NODE_PORT=8080
+      - NODE_CONFIG_PATH=/config/config2.txt
+    volumes:
+      - ./logs:/logs
+
+  node3:
+    container_name: node3
+    image: node-img
+    environment:
+      - NODE_ID=3
+      - NODE_PORT=8080
+      - NODE_CONFIG_PATH=/config/config3.txt
+    volumes:
+      - ./logs:/logs

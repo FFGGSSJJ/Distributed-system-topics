@@ -17,13 +17,14 @@ extern "C" {
 // #include "rmulticast.hpp"
 #include "config_parser.hpp"
 #include "transaction.hpp"
+#include "resolvehost.hpp"
 
 
-int node_listen(int port)
+int node_listen(std::string host_name, int port)
 {
 	/* set up connection context */
 	struct sockaddr_in server_addr;
-	std::string ip = "127.0.0.1";
+	std::string ip = resolveHostName(host_name)[0];
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = port;
 	server_addr.sin_addr.s_addr = inet_addr(ip.c_str());
@@ -57,14 +58,14 @@ void node_connect(std::map<std::string, std::vector<std::string>>& nodes, std::m
 {
 	for (auto i = nodes.cbegin(); i != nodes.cend(); i++) {
 		std::string node_name = i->first;
-		std::string ip = i->second[0];
-		int port = std::stoi(i->second[1]);
+		std::vector<std::string> ips = resolveHostName(node_name);
+		int port = std::stoi(i->second[0]);
 
 		/* set up connection context */
 		struct sockaddr_in server_addr;
 		server_addr.sin_family = AF_INET;
 		server_addr.sin_port = port;
-		server_addr.sin_addr.s_addr = inet_addr(ip.c_str());
+		server_addr.sin_addr.s_addr = inet_addr(ips[0].c_str());
 
 		/* set up connection */
 		bool connected = false;
@@ -137,7 +138,9 @@ int main(int argc, char* argv[])
 
 	/* start listening */
 	std::map<std::string, int> client_node_fds;
-    int listenfd = node_listen(port);
+	std::string node_name = "node";
+	node_name.push_back('0'+node_id);
+    int listenfd = node_listen(node_name, port);
 
 	/* start application thread */
 	std::thread transaction_handler(transaction_recv, node_id);

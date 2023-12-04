@@ -19,16 +19,13 @@ std::map<std::string, std::vector<std::string>> parser(std::string config_file, 
     for (int i = 0; i < std::stoi(nodenum); i++) {
         std::vector<std::string> node_info;
 		std::string node_name;
-		std::string ip;
 		std::string port;
 
 		/* read the fields */
 		std::getline(config, node_name, delimiter);
-		std::getline(config, ip, delimiter);
 		std::getline(config, port, '\n');
 
         /* store */
-        node_info.push_back(ip);
         node_info.push_back(port);
         res[node_name] = node_info;
     }

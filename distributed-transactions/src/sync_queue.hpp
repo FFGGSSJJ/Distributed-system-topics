@@ -44,7 +44,7 @@ public:
     void update_msg(uint16_t msg_id, uint16_t final_seq_num, int node_id) {
         std::unique_lock<std::mutex> mlock(_mutex);
         
-        for (int i = 0; i < _queue.size(); i++) {
+        for (int i = 0; i < (int)_queue.size(); i++) {
             if ((uint16_t)(_queue[i].c_str()[3]) == msg_id) {
                 _queue[i][0] = (char) (((final_seq_num*10+node_id) >> 8) & 0x00FF);
                 _queue[i][1] = (char) (((final_seq_num*10+node_id)) & 0x00FF);
@@ -63,9 +63,8 @@ public:
         std::unique_lock<std::mutex> mlock(_mutex);
 
         std::string deliverable_msg;
-        int original_size = _queue.size();
         
-        for (int i = 0; i < _queue.size(); i++) {
+        for (int i = 0; i < (int)_queue.size(); i++) {
             if ((uint16_t)(_queue[i].c_str()[3]) == msg_id) {
                 _queue[i][0] = (char) (((final_seq_num*10+node_id) >> 8) & 0x00FF);
                 _queue[i][1] = (char) (((final_seq_num*10+node_id)) & 0x00FF);

@@ -214,7 +214,7 @@ void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
         std::vector<std::string> msgs = parse_recvmsgs(msg);
 
         /* insert into message queue */
-        for (int i = 0; i < msgs.size(); i++)
+        for (int i = 0; i < (int)msgs.size(); i++)
             msg_queue.push_back(std::move(msgs[i]));
 		
         /* next loop */
@@ -230,7 +230,7 @@ void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
 void rmulti_recv(int node_num, std::map<std::string, int>& nodes)
 {
     /* wait... */
-    while (nodes.size() < node_num)
+    while ((int)nodes.size() < node_num)
         std::this_thread::sleep_for(std::chrono::seconds(5));
     std::cout << "[INFO]: Multicast Revc Started" << std::endl;
 
@@ -274,7 +274,7 @@ void rmulti_recv(int node_num, std::map<std::string, int>& nodes)
 void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes)
 {
     /* wait... */
-    while (nodes.size() < node_num)
+    while ((int)nodes.size() < node_num)
         std::this_thread::sleep_for(std::chrono::seconds(5));
     std::cout <<"[INFO]: Multicast Sender Started" << std::endl;
 
