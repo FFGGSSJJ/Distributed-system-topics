@@ -14,11 +14,11 @@
 
 /* mutex to guarantee thread safety */
 std::mutex nodemap_mutex;
-std::mutex delq_mutex;
 std::mutex seq_mutex;
 
+static SyncMsgQueue transaction_queue;  // shared memory between application and multicast
 static SyncMsgQueue msg_queue;
-static std::deque<std::string> deliver_queue;
+static SyncMsgQueue deliver_queue;
 static uint16_t seq_num;
 static uint16_t msg_unq_id;
 
@@ -88,34 +88,6 @@ void pack_msg2send(std::string& msg2send, std::string msg, int8_t msgtype, uint8
 }
 
 
-
-/**
- * @brief update deliver queue and sort
- * @details update the seq number of msg with msg_id
-*/
-void update_deliver_queue(uint16_t msg_id, uint16_t final_seq_num, int node_id) 
-{
-    /* change priority in queue and sort */
-    while(!delq_mutex.try_lock());
-    for (int i = 0; i < deliver_queue.size(); i++) {
-        if ((uint16_t)(deliver_queue[i].c_str()[3]) == msg_id) {
-            std::cout << "[DEBUG]: prev priority::" <<  (uint16_t)(((deliver_queue[i][0] << 8)&0xFF00) | (deliver_queue[i][1]&0x00FF)) << " delv::" <<  (uint16_t)deliver_queue[i][2] << std::endl;
-            deliver_queue[i][0] = (char) (((final_seq_num*10+node_id) >> 8) & 0x00FF);
-            deliver_queue[i][1] = (char) (((final_seq_num*10+node_id)) & 0x00FF);
-            deliver_queue[i][2] = deliverable;
-            std::cout << "[DEBUG]: f::" <<  final_seq_num << " n::" << node_id << std::endl;
-            std::cout << "[DEBUG]: curr priority::" <<  (uint16_t)(((deliver_queue[i][0] << 8)&0xFF00) | (deliver_queue[i][1]&0x00FF)) << " delv::" <<  (uint16_t)deliver_queue[i][2] << std::endl;
-            break;
-        }
-    }
-    // sort the deque
-    std::sort(deliver_queue.begin(), deliver_queue.end());
-    delq_mutex.unlock();
-
-    return;
-}
-
-
 /* handle received message with type MSG */
 int message_handler(std::string msg, std::map<std::string, int>& nodes)
 {
@@ -144,9 +116,7 @@ int message_handler(std::string msg, std::map<std::string, int>& nodes)
     pack_msg2deliver(msg2deliver, mainmsg, msg_id, (uint16_t)prop_seq*10 + node_id, undeliverable);
 
     /* push */
-    while(!delq_mutex.try_lock());
     deliver_queue.push_back(msg2deliver);
-    delq_mutex.unlock();
 
     /* reply */
     int ret = 0;
@@ -178,19 +148,12 @@ int finalseq_handler(std::string msg)
     seq_mutex.unlock();
 
     /* update the msg in deliver queue */
-    update_deliver_queue(msg_id, final_seq_num, node_id);
+    deliver_queue.update_msg(msg_id, final_seq_num, node_id);
 
-    /* inform the application layer */
-    std::cout << "[DEBUG]: head priority::" <<  (uint16_t)(((deliver_queue[0][0] << 8)&0xFF00) | (deliver_queue[0][1]&0x00FF)) 
-        << " delv::" <<  (uint16_t)deliver_queue[0][2] 
-        << " queue len::" << deliver_queue.size() << std::endl;
-
-    while(!delq_mutex.try_lock());
     if ((uint8_t)deliver_queue.front()[2] == deliverable) {
         transaction_queue.push_back(std::move(deliver_queue.front()));
         deliver_queue.pop_front();
     }
-    delq_mutex.unlock();
 
     return EXIT_SUCCESS;
 }
@@ -264,7 +227,6 @@ void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
 
 
 /* handling msg from the server nodes */
-// TODO :: error handling
 void rmulti_recv(int node_num, std::map<std::string, int>& nodes)
 {
     /* wait... */
@@ -366,9 +328,7 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes)
         pack_msg2send(msg2send, msg, MSG, node_id);
 
         // push msg to deliver queue
-        while(!delq_mutex.try_lock());
         deliver_queue.push_back(msg2queue);
-        delq_mutex.unlock();
 
         // cast msg to all nodes
         int majority_cnt = 0;
@@ -439,15 +399,13 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes)
         }
 
         // update deliver queue
-        update_deliver_queue(self_unq_id, final_seq, node_id);
+        deliver_queue.update_msg(self_unq_id, final_seq, node_id);
 
         // inform application layer
-        while(!delq_mutex.try_lock());
         if ((uint8_t)deliver_queue.front()[2] == deliverable) {
             transaction_queue.push_back(std::move(deliver_queue.front()));
             deliver_queue.pop_front();
         }
-        delq_mutex.unlock();
     }
     return;
 }
