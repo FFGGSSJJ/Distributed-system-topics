@@ -9,6 +9,8 @@
 #include <queue>
 #include <algorithm>
 
+#include "rmulticast.hpp"
+
 static std::map<std::string, int> accounts;
 
 int deposit_handler()
@@ -21,9 +23,9 @@ int transfer_handler()
     return EXIT_SUCCESS;
 }
 
-void transaction_recv(std::queue<std::string>& transaction_queue, int node_id)
+void transaction_recv(int node_id)
 {
-    std::string loggername = "transaction_logger";
+    std::string loggername = "logs/transaction_logger";
     loggername.push_back((char)('0'+node_id));
     loggername.append(".txt");
     std::ofstream logger(loggername, std::ios::out | std::ios::trunc);
@@ -35,7 +37,7 @@ void transaction_recv(std::queue<std::string>& transaction_queue, int node_id)
 
         /* handle incomin transaction */
         logger << "[INFO]: transaction coming::" << transaction_queue.front().substr(4) << std::endl;
-        transaction_queue.pop();
+        transaction_queue.pop_front();
     }
     return;
 }

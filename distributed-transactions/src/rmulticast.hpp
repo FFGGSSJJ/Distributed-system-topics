@@ -8,22 +8,22 @@
 #include <mutex>
 #include <queue>
 #include <algorithm>
+#include <arpa/inet.h>
+
+#include "sync_queue.hpp"
 
 /* mutex to guarantee thread safety */
 std::mutex nodemap_mutex;
-std::mutex msgq_mutex;
 std::mutex delq_mutex;
 std::mutex seq_mutex;
 
-static std::queue<std::string> msg_queue;
+static SyncMsgQueue msg_queue;
 static std::deque<std::string> deliver_queue;
 static uint16_t seq_num;
 static uint16_t msg_unq_id;
 
 const int recv_size = 4096;
 const char msg_delimiter = 0xEE;
-const uint8_t deliverable = 0xFF;
-const uint8_t undeliverable = 0x00;
 
 enum INFO_TYPE
 {
@@ -51,7 +51,7 @@ std::vector<std::string> parse_recvmsgs(std::string& msg)
 
 
 
-/* pack msg into the packet that is to be pushed into queue*/
+/* pack msg into the packet that is to be pushed into dekiver queue*/
 /* 0++++++1+++++++2++++++3+++++++4+++++++++++++++++n
  * |   Priority   |Delive| MsgID |     Message     |
  * +++++++++++++++++++++++++++++++++++++++++++++++++
@@ -164,7 +164,7 @@ int message_handler(std::string msg, std::map<std::string, int>& nodes)
 
 
 /* handle received message with type FINAL_SEQ_NUM */
-int finalseq_handler(std::string msg, std::queue<std::string>& transaction_queue)
+int finalseq_handler(std::string msg)
 {   
     std::cout << "final handler" << std::endl;
 
@@ -187,7 +187,7 @@ int finalseq_handler(std::string msg, std::queue<std::string>& transaction_queue
 
     while(!delq_mutex.try_lock());
     if ((uint8_t)deliver_queue.front()[2] == deliverable) {
-        transaction_queue.push(std::move(deliver_queue.front()));
+        transaction_queue.push_back(std::move(deliver_queue.front()));
         deliver_queue.pop_front();
     }
     delq_mutex.unlock();
@@ -199,6 +199,10 @@ int finalseq_handler(std::string msg, std::queue<std::string>& transaction_queue
 
 
 /* thread fuinctions */
+/**
+ * @brief thread function for listening client nodes
+ * @param sockfd: sockfd for client node
+*/
 void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
 {
     /* init data buffer */
@@ -221,13 +225,19 @@ void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
 		ret = recv(sockfd, buffer, (size_t)recv_size, 0);
 
         /* check recv bytes */
+
+        // if error happened in client node
 		if (ret < 0) {
-            std::cout << std::to_string(std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::system_clock::now().time_since_epoch()).count()) 
-                << " " << info.substr(info.find(' ')+1) <<" - disconnected" << std::endl;
-            break;
+            std::cout << "[INFO] node error " << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            continue;
         }
         
+        // if client node disconnected
         if (ret == 0) {
+            std::cout << std::to_string(std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::system_clock::now().time_since_epoch()).count()) 
+                << " " << info.substr(info.find(' ')+1) <<" - disconnected" << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(5));
             continue;
         }
 	
@@ -241,10 +251,8 @@ void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
         std::vector<std::string> msgs = parse_recvmsgs(msg);
 
         /* insert into message queue */
-        while(!msgq_mutex.try_lock());
         for (int i = 0; i < msgs.size(); i++)
-            msg_queue.push(std::move(msgs[i]));
-        msgq_mutex.unlock();
+            msg_queue.push_back(std::move(msgs[i]));
 		
         /* next loop */
         memset(buffer, 0, (size_t)recv_size);
@@ -257,7 +265,7 @@ void client_node_listening(int sockfd, std::map<std::string, int>& nodes)
 
 /* handling msg from the server nodes */
 // TODO :: error handling
-void rmulti_recv(int node_num, std::map<std::string, int>& nodes, std::queue<std::string>& transaction_queue)
+void rmulti_recv(int node_num, std::map<std::string, int>& nodes)
 {
     /* wait... */
     while (nodes.size() < node_num)
@@ -279,10 +287,8 @@ void rmulti_recv(int node_num, std::map<std::string, int>& nodes, std::queue<std
         }
 
         /* get msg */
-        while(!msgq_mutex.try_lock());
         std::string msg = msg_queue.front();
-        msg_queue.pop();
-        msgq_mutex.unlock();
+        msg_queue.pop_front();
 
         /* switch msg handler */
         switch (msg.c_str()[0])
@@ -291,7 +297,7 @@ void rmulti_recv(int node_num, std::map<std::string, int>& nodes, std::queue<std
             message_handler(msg, nodes);
             break;
         case FINAL_SEQ_NUM:
-            finalseq_handler(msg, transaction_queue);
+            finalseq_handler(msg);
             break;
         default:
             break;
@@ -303,13 +309,18 @@ void rmulti_recv(int node_num, std::map<std::string, int>& nodes, std::queue<std
 
 
 /* cast msg as server node */
-// TODO :: error handling
-void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, std::queue<std::string>& transaction_queue)
+void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes)
 {
     /* wait... */
     while (nodes.size() < node_num)
         std::this_thread::sleep_for(std::chrono::seconds(5));
     std::cout <<"[INFO]: Multicast Sender Started" << std::endl;
+
+    /* keep track of node situations */
+    std::map<std::string, bool> node_status;
+    for (auto i = nodes.cbegin(); i != nodes.cend(); i++) {
+        node_status[i->first] = true;
+    }
 
     /* start broad cast */
     while (true) {
@@ -364,10 +375,14 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
         uint16_t final_seq = proposed_seq;
         // unq_ids is used to keep track of the msg_id of each node, as it may differ by nodes
         std::map<std::string, uint16_t> unq_ids;
+
+        // loop node lists to multicast messages
         for (auto i = nodes.cbegin(); i != nodes.cend(); i++) {
             int ret = 0;
             char buffer[recv_size];
 		    while (ret <= 0) {
+                if (!node_status[i->first])
+                    break;
 			    ret = send(i->second, msg2send.c_str(), (size_t)msg2send.size(), 0);
                 std::cout << (int)msg2send.c_str()[0] << (int)msg2send.c_str()[1] << ret << std::endl;
 		    }
@@ -378,10 +393,13 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
             
             // if the node fails, continue to the next node
             if (ret <= 0) {
-                std::cout <<"[INFO]: Node " << i->first << " Fails" << std::endl;
+                std::cout <<"[INFO]: " << i->first << " Fails" << std::endl;
+                node_status[i->first] = false;
                 continue;
             }
 
+            // if the node succeeds
+            node_status[i->first] = true;
             std::cout <<"[INFO]: Multicast Get Proposed Seq#" << std::endl;
             
             // update final seq num
@@ -394,8 +412,9 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
 
         // if majority not reached, skip this msg
         // not necessary to update deliver_queue as the msg is marked as undeliverable
-        if (majority_cnt < node_num/2+1) {
-            std::cout <<"[INFO]: Majority Not Reached, MSG " << std::endl;
+        // and for other nodes this msg will be marked as undeliverable also
+        if (majority_cnt < node_num/2) {
+            std::cout <<"[INFO]: Majority Not Reached" << std::endl;
             continue;
         }
 
@@ -406,15 +425,17 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
 
         // cast final seq to all nodes
         for (auto i = nodes.cbegin(); i != nodes.cend(); i++) {
+            // skip the failed node
+            if (!node_status[i->first])
+                continue;
+
             // repack msg
             msg2send.clear();
             pack_msg2send(msg2send, msg, FINAL_SEQ_NUM, node_id, unq_ids[i->first], final_seq);
 
-            int ret = 0;
-		    while (ret <= 0) {
-			    ret = send(i->second, msg2send.c_str(), (size_t)msg2send.size(), 0);
-                std::cout <<"[DEBUG]: send final::" << (uint16_t)msg2send.c_str()[2] << " msgid::" << (uint16_t)msg2send.c_str()[3] << std::endl;
-		    }
+            int ret = send(i->second, msg2send.c_str(), (size_t)msg2send.size(), 0);
+            if (ret <= 0) 
+                node_status[i->first] = false;
         }
 
         // update deliver queue
@@ -423,7 +444,7 @@ void rmulti_cast(int node_id, int node_num, std::map<std::string, int>& nodes, s
         // inform application layer
         while(!delq_mutex.try_lock());
         if ((uint8_t)deliver_queue.front()[2] == deliverable) {
-            transaction_queue.push(std::move(deliver_queue.front()));
+            transaction_queue.push_back(std::move(deliver_queue.front()));
             deliver_queue.pop_front();
         }
         delq_mutex.unlock();

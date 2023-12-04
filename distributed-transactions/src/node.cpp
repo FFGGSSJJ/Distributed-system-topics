@@ -14,7 +14,7 @@ extern "C" {
 #include <chrono>
 #include <vector>
 #include <map>
-#include "rmulticast.hpp"
+// #include "rmulticast.hpp"
 #include "config_parser.hpp"
 #include "transaction.hpp"
 
@@ -140,12 +140,11 @@ int main(int argc, char* argv[])
     int listenfd = node_listen(port);
 
 	/* start application thread */
-	std::queue<std::string> transaction_queue;
-	std::thread transaction_handler(transaction_recv, std::ref(transaction_queue), node_id);
+	std::thread transaction_handler(transaction_recv, node_id);
 
 	/* start Relaibel multicast */
-	std::thread rmulticastcast(rmulti_cast, node_id, node_number, std::ref(server_node_fds), std::ref(transaction_queue));
-	std::thread rmulticastrecv(rmulti_recv, node_number, std::ref(client_node_fds), std::ref(transaction_queue));
+	std::thread rmulticastcast(rmulti_cast, node_id, node_number, std::ref(server_node_fds));
+	std::thread rmulticastrecv(rmulti_recv, node_number, std::ref(client_node_fds));
 
 
 	/* accept incoming connection */
