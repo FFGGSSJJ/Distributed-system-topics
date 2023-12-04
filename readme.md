@@ -11,7 +11,7 @@ The first is a simple network application with a **<u>centralized logger</u>** a
 - The original design is performed in a local machine with multi-processors.
 - I slightly extended the design with containerization by utilizing docker and just for fun. 
 
-#### 2. Transactions in distributed system with correct order
+#### 2. Decentralized Transaction Model
 
 The second is a network application focusing on global ordering of events in order to perform consistent actions. In this project, the concepts of **<u>Reliable Multicast</u>** and **<u>Replica</u>** should be realized. The general idea is to guarantee the consistency and consensus between different nodes. 
 
