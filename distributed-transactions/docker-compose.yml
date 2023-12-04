@@ -30,3 +30,13 @@ services:
       - NODE_CONFIG_PATH=/config/config3.txt
     volumes:
       - ./logs:/logs
+  
+  node4:
+    container_name: node4
+    image: node-img
+    environment:
+      - NODE_ID=4
+      - NODE_PORT=8080
+      - NODE_CONFIG_PATH=/config/config4.txt
+    volumes:
+      - ./logs:/logs
